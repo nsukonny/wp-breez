@@ -27,5 +27,13 @@ Loader::init_autoload(__NAMESPACE__, __DIR__);
 register_activation_hook(__FILE__, array(Install::class, 'install'));
 
 if (is_admin()) {
-    add_action('init', array(WPBreez::class, 'instance'));
+    if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
+        add_action('init', array(WPBreez::class, 'instance'));
+    } else {
+        add_action('admin_notices', function () {
+            echo '<div class="notice notice-error is-dismissible">
+                <p>' . __('WP Breez requires WooCommerce plugin to be active.', 'wpbreez') . '</p>
+            </div>';
+        });
+    }
 }

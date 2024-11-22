@@ -24,6 +24,7 @@ class WPBreez
     public function init()
     {
         add_action('init_wpbreez', array(API::class, 'instance'));
+        add_action('init_wpbreez', array(Import::class, 'instance'));
         add_action('init_wpbreez', array(Settings::class, 'instance'));
 
         if (is_admin()) {

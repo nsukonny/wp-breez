@@ -41,7 +41,7 @@ class Settings
         $settings = $this->sanitize_array($_REQUEST['form_data']);
         unset($settings['_ajax_nonce']);
 
-        $settings = $this->parse_urls($settings); //TODO Move this to filter hp_save_settings
+        $settings = $this->parse_urls($settings);
         $settings = $this->add_checkboxes($settings);
         $settings = $this->remove_empty_form_fields($settings);
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Add shortcodes actions
+ * Work with API requests
  *
  * @since 1.0.0
  */
@@ -16,6 +16,8 @@ class API
 
     use Singleton;
 
+    private $api_url = 'https://api.breez.ru/v1/';
+
     /**
      * Init post types
      *
@@ -23,87 +25,128 @@ class API
      */
     public function init()
     {
-        add_shortcode('alert-note', array($this, 'alert'));
-        add_shortcode('success-note', array($this, 'success'));
-        add_shortcode('info-note', array($this, 'info'));
     }
 
     /**
-     * Draw alert note
+     * Get all categories
      *
-     * @param $atts
-     * @param $content
-     *
-     * @return false|string
+     * @since 1.0.0
      */
-    public function alert($atts, $content)
+    public function get_breez_categories(): array
     {
-        ob_start();
-        ?>
+        $breez_categories = get_transient('breez_categories');
+        if (false === $breez_categories) {
+            $breez_categories = $this->get_response('categories');
+            set_transient('breez_categories', $breez_categories, 1 * HOUR_IN_SECONDS);
+        }
 
-        <div class="widget__callout-item item-callout item-callout_red">
-            <?php if (isset($atts['title'])) { ?>
-                <div class="item-callout__title"><?php echo esc_attr($atts['title']); ?></div>
-            <?php } ?>
-            <div class="item-callout__text">
-                <?php echo $content; ?>
-            </div>
-        </div>
-
-        <?php
-        return ob_get_clean();
+        return $breez_categories;
     }
 
     /**
-     * Draw success note
+     * Get technical data for the category
      *
-     * @param $atts
-     * @param $content
-     *
-     * @return false|string
+     * @since 1.0.0
      */
-    public function success($atts, $content)
+    public function get_breez_category_tech($breez_category_id): array
     {
-        ob_start();
-        ?>
-
-        <div class="widget__callout-item item-callout item-callout_green">
-            <?php if (isset($atts['title'])) { ?>
-                <div class="item-callout__title"><?php echo esc_attr($atts['title']); ?></div>
-            <?php } ?>
-            <div class="item-callout__text">
-                <?php echo $content; ?>
-            </div>
-        </div>
-
-        <?php
-        return ob_get_clean();
+        return $this->get_response('tech/?category=' . $breez_category_id);
     }
 
     /**
-     * Draw success note
+     * Get all products
      *
-     * @param $atts
-     * @param $content
-     *
-     * @return false|string
+     * @since 1.0.0
      */
-    public function info($atts, $content)
+    public function get_breez_products(): array
     {
-        ob_start();
-        ?>
+        $breez_products = get_transient('breez_products');
+        if (false === $breez_products) {
+            $breez_products = $this->get_response('products');
+            set_transient('breez_products', $breez_products, 1 * HOUR_IN_SECONDS);
+        }
 
-        <div class="widget__callout-item item-callout item-callout_blue">
-            <?php if (isset($atts['title'])) { ?>
-                <div class="item-callout__title"><?php echo esc_attr($atts['title']); ?></div>
-            <?php } ?>
-            <div class="item-callout__text">
-                <?php echo $content; ?>
-            </div>
-        </div>
+        return $breez_products;
+    }
 
-        <?php
-        return ob_get_clean();
+    /**
+     * Get technical data for the product
+     *
+     * @since 1.0.0
+     */
+    public function get_breez_product_tech($breez_product_id): array
+    {
+        return $this->get_response('tech/?id=' . $breez_product_id);
+    }
+
+    /**
+     * Get all categories
+     *
+     * @since 1.0.0
+     */
+    public function get_breez_brands(): array
+    {
+        $breez_brands = get_transient('breez_brands');
+        if (false === $breez_brands) {
+            $breez_brands = $this->get_response('brands');
+            set_transient('breez_brands', $breez_brands, 1 * HOUR_IN_SECONDS);
+        }
+
+        return $breez_brands;
+    }
+
+    /**
+     * Get stocks for products
+     *
+     * @since 1.0.0
+     */
+    public function get_breez_products_stocks(): array
+    {
+        $breez_products_stocks = get_transient('breez_products_stocks');
+        if (false === $breez_products_stocks) {
+            $breez_products_stocks = $this->get_response('leftovers');
+            set_transient('breez_products_stocks', $breez_products_stocks, 1 * HOUR_IN_SECONDS);
+        }
+
+        return $breez_products_stocks;
+    }
+
+    /**
+     * DO a call to the server and get the response
+     *
+     * @param $url
+     *
+     * @return array
+     */
+    private function get_response($url): array
+    {
+        $username = 'splitmontazhkmv@yandex.ru'; //TODO move to settings
+        $password = 'e48febdb77e24c6f9607';
+        $api_key = 'c3BsaXRtb250YXpoa212QHlhbmRleC5ydTplNDhmZWJkYjc3ZTI0YzZmOTYwNw==';
+
+        $credentials = base64_encode("$username:$password");
+        $args = array(
+            'headers' => array(
+                'Authorization' => 'Basic ' . $credentials,
+            ),
+        );
+
+        $response = wp_remote_get($this->api_url . $url, $args);
+        if (is_wp_error($response)) {
+            error_log('API Error: ' . $response->get_error_message());
+            return [];
+        }
+
+        $response_body = wp_remote_retrieve_body($response);
+        error_log("API Response: " . print_r($response_body, true));
+
+        $data = json_decode($response_body, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('JSON decode error: ' . json_last_error_msg());
+            return [];
+        }
+
+        return $data;
     }
 
 }
