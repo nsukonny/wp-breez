@@ -7,6 +7,8 @@
 
 namespace WPBreez;
 
+use WC_Data_Exception;
+use WC_Product;
 use WPBreez\Framework\Singleton;
 
 defined('ABSPATH') || exit;
@@ -18,29 +20,19 @@ class Import
 
     private $all_media_files = [];
 
-    private $products_per_request =25;
+    private $products_per_request = 300;
+
+    private $products = [];
+
+    private $product_skus = [];
 
     /**
      * Init post types
      *
      * @since 1.0.0
      */
-    public function init()
+    public function init(): void
     {
-        //add_action('init_wpbreez', array($this, 'import_products'));
-        if ('advgb_main' === $_REQUEST['page']) {
-            //$this->clean_all();
-
-            //$this->import_categories();
-            //$this->import_category_brands();
-            $page = intval($_REQUEST['page_number']);
-
-            //$products = $this->import_products($page);
-            //$this->import_all_product_techs();
-            //echo '<pre>---pr-' . print_r($products, true) . '</pre>';
-            $this->import_product_stocks();
-            //Qantity we can load from https://api.breez.ru/lo
-        }
     }
 
     /**
@@ -150,39 +142,107 @@ class Import
     /**
      * Run import all products from Breez to WooCommerce
      *
+     * @param int $page_number
+     *
      * @return array
+     *
+     * @throws WC_Data_Exception
      */
-    public function import_products(int $page = 1): array
+    public function import_products(int $page_number = 1): array
     {
         $breez_products = API::instance()->get_breez_products();
         $created_product_ids = [];
 
+        $from = ($page_number - 1) * $this->products_per_request;
+        $to = $page_number * $this->products_per_request;
+
+        $breez_products = array_slice($breez_products, $from, $to, true);
         if (empty($breez_products)) {
             return [];
         }
 
-        $from = ($page - 1) * $this->products_per_request;
-        $to = $page * $this->products_per_request;
-        $product_number = 0;
+        $product_skus = $this->get_all_product_skus();
         foreach ($breez_products as $breez_product_id => $breez_product) {
-            if ($from > $breez_product_id) {
+            $product_id = $this->get_product_id_by_sku($breez_product['articul']);
+            if (!empty($product_id)) {
                 continue;
             }
-            if ($to < $breez_product_id) {
-                break;
-            }
-
-            $product_id = wc_get_product_id_by_sku($breez_product['articul']);
-            $this->update_product($product_id, $breez_product, $breez_product_id);
-            $product_number++;
+            $created_product_ids[] = $this->create_product($breez_product, $breez_product_id);
         }
 
-        if ($product_number < count($breez_products)) {
-            $page++;
-            wp_safe_redirect(admin_url('admin.php?page=advgb_main&page_number=' . $page));
-        }
+        $page_number++;
+        ?>
+        <script>
+            window.location.href = '<?php echo admin_url(
+                'options-general.php?page=wpbreez_settings&action=import_products&page_number=' . $page_number
+            ); ?>';
+        </script>
+        <?php
+        wp_die('Please wait...');
+//        wp_safe_redirect(
+//            admin_url(
+//                'options-general.php?page=wpbreez_settings&action=import_products&page_number=' . $page_number
+//            )
+//        );
 
         return $created_product_ids;
+    }
+
+    /**
+     * Load all technical data for all products and put to attributes
+     *
+     * @return void
+     */
+    public function import_all_product_techs(): void
+    {
+        $products = $this->get_all_products();
+        if (empty($products)) {
+            return;
+        }
+
+        foreach ($products as $product) {
+            $this->import_product_techs($product);
+        }
+    }
+
+    /**
+     * Load stocks quantity for all products
+     *
+     * @return void
+     */
+    public function import_product_stocks(): void
+    {
+        $breez_product_stocks = API::instance()->get_breez_products_stocks();
+        if (empty($breez_product_stocks)) {
+            return;
+        }
+
+        $products = $this->get_all_products();
+        if (empty($products)) {
+            return;
+        }
+
+        $breez_product_stocks = $this->prepare_stocks($breez_product_stocks);
+        foreach ($products as $product) {
+            $product_articul = $product->get_sku();
+            if (empty($product_articul)) {
+                continue;
+            }
+
+            $stock_quantity = 0;
+            foreach ($breez_product_stocks as $breez_product_stock) {
+                if ($breez_product_stock['articul'] === $product_articul) {
+                    $stock_quantity = $breez_product_stock['quantity'] ?? 0;
+                    $product->set_price($breez_product_stock['price']['base']);
+                    $product->set_regular_price($breez_product_stock['price']['ric']);
+
+                    break;
+                }
+            }
+            $product->set_stock_quantity($stock_quantity);
+            $product->set_stock_status($stock_quantity > 0 ? 'instock' : 'outofstock');
+            $product->save();
+        }
     }
 
     /**
@@ -212,52 +272,57 @@ class Import
     }
 
     /**
-     * Update product data from Breez data
+     * Create a new product from Breez data
      *
-     * @param int $product_id
      * @param array $breez_product
      * @param int $breez_product_id
      *
      * @return int Product ID
+     *
+     * @throws WC_Data_Exception
      */
-    private function update_product(int $product_id, array $breez_product, int $breez_product_id): int
+    private function create_product(array $breez_product, int $breez_product_id): int
     {
-        $product = wc_get_product($product_id);
-        if (!$product) {
-            $product = new \WC_Product();
+        try {
+            $product = new WC_Product();
+            $product->set_name($breez_product['title']);
+            $product->set_slug($this->generate_slug_from_title($breez_product['title']));
+            $product->set_sku($breez_product['articul']);
+            $product->set_description(html_entity_decode($breez_product['description']));
+            $product->set_short_description(html_entity_decode($breez_product['utp']));
+            $product->set_price($breez_product['price']['rrc']);
+            $product->set_regular_price($breez_product['price']['rrc']);
+            $product_categories = [
+                $this->get_category_id_by_meta('breeze_category_id', $breez_product['category_id']),
+                $this->get_category_id_by_meta('breez_brand_id', $breez_product['brand']),
+            ];
+            $product->set_category_ids($product_categories);
+            $product->set_catalog_visibility('visible');
+            $product->set_status('publish');
+            $product->set_manage_stock(true);
+            $product->set_stock_quantity(0);
+            $product->set_stock_status('outofstock');
+            $product->set_backorders('no');
+            $product->set_reviews_allowed(true);
+            $product->set_sold_individually(false);
+            $product->set_virtual(false);
+            $product->set_downloadable(false);
+
+            $this->add_images_to_product($product, $breez_product);
+
+            if ($product->save()) {
+                $this->add_product_to_all_products($product);
+                add_post_meta($product->get_id(), 'breez_product_id', $breez_product_id);
+
+                $this->import_product_techs($product, $breez_product_id);
+
+                return $product->get_id();
+            }
+        } catch (Exception $e) {
+            return 0;
         }
-        $product->set_name($breez_product['title']);
-        $product->set_slug($this->generate_slug_from_title($breez_product['title']));
-        $product->set_sku($breez_product['articul']);
-        $product->set_description(html_entity_decode($breez_product['description']));
-        $product->set_short_description(html_entity_decode($breez_product['utp']));
-        $product->set_price($breez_product['price']['rrc']);
-        $product->set_regular_price($breez_product['price']['rrc']);
-        $product_categories = [
-            $this->get_category_id_by_meta('breeze_category_id', $breez_product['category_id']),
-            $this->get_category_id_by_meta('breez_brand_id', $breez_product['brand']),
-        ];
-        $product->set_category_ids($product_categories);
-        $product->set_catalog_visibility('visible');
-        $product->set_status('publish');
-        $product->set_manage_stock(true);
-        $product->set_stock_quantity(0);
-        $product->set_stock_status('outofstock');
-        $product->set_backorders('no');
-        $product->set_reviews_allowed(true);
-        $product->set_sold_individually(false);
-        $product->set_virtual(false);
-        $product->set_downloadable(false);
 
-        $this->add_images_to_product($product, $breez_product);
-
-        $product->save();
-
-        add_post_meta($product->get_id(), 'breez_product_id', $breez_product_id);
-
-        $this->import_product_techs($product, $breez_product_id);
-
-        return $product->get_id();
+        return 0;
     }
 
     /**
@@ -345,35 +410,14 @@ class Import
     }
 
     /**
-     * Load all technical data for all products and put to attributes
-     *
-     * @return void
-     */
-    private function import_all_product_techs(): void
-    {
-        $args = array(
-            'status' => 'publish',
-            'limit' => -1,
-        );
-        $products = wc_get_products($args);
-        if (empty($products)) {
-            return;
-        }
-
-        foreach ($products as $product) {
-            $this->import_product_techs($product);
-        }
-    }
-
-    /**
      * Load and add images to the product if need it
      *
-     * @param \WC_Product $product
+     * @param WC_Product $product
      * @param array $breez_product
      *
      * @return void
      */
-    private function add_images_to_product(\WC_Product &$product, array $breez_product): void
+    private function add_images_to_product(WC_Product &$product, array $breez_product): void
     {
         if (empty($breez_product['images'])) {
             return;
@@ -407,80 +451,6 @@ class Import
 
         if (empty($product_gallery_images) && !empty($gallery_image_ids)) {
             $product->set_gallery_image_ids($gallery_image_ids);
-        }
-    }
-
-    private function clean_all()
-    {
-        //delete all categories
-//        $args = array(
-//            'taxonomy' => 'product_cat',
-//            'hide_empty' => false,
-//        );
-//        $categories = get_terms($args);
-//        foreach ($categories as $category) {
-//            wp_delete_term($category->term_id, 'product_cat');
-//        }
-//
-//        echo 'all deleted';
-
-
-        //delete all products
-        $args = array(
-            'post_type' => 'product',
-            'posts_per_page' => -1,
-        );
-        $products = get_posts($args);
-        foreach ($products as $product) {
-            wp_delete_post($product->ID, true);
-        }
-        wp_die();
-    }
-
-    /**
-     * Load stocks quantity for all products
-     *
-     * @return void
-     */
-    private function import_product_stocks(): void
-    {
-        $breez_product_stocks = API::instance()->get_breez_products_stocks();
-        if (empty($breez_product_stocks)) {
-            return;
-        }
-
-        $args = array(
-            'status' => 'publish',
-            'limit' => -1,
-        );
-        $products = wc_get_products($args);
-        if (empty($products)) {
-            return;
-        }
-
-        $breez_product_stocks = $this->prepare_stocks($breez_product_stocks);
-
-        foreach ($products as $product) {
-            $product_articul = $product->get_sku();
-            if (empty($product_articul)) {
-                continue;
-            }
-
-            $stock_quantity = 0;
-            foreach ($breez_product_stocks as $breez_product_stock) {
-                if ($breez_product_stock['articul'] === $product_articul) {
-                    $stock_quantity = $breez_product_stock['quantity'] ?? 0;
-
-                    $product->set_price($breez_product_stock['price']['base']);
-                    $product->set_regular_price($breez_product_stock['price']['ric']);
-
-                    echo '<pre>---pr-' . print_r($product, true) . '</pre>';
-                    break;
-                }
-            }
-            $product->set_stock_quantity($stock_quantity);
-            $product->set_stock_status($stock_quantity > 0 ? 'instock' : 'outofstock');
-            $product->save();
         }
     }
 
@@ -554,5 +524,77 @@ class Import
 
         return $slug;
     }
+
+    /**
+     * Find product ID by Breez Artikul
+     *
+     * @param string $articul
+     *
+     * @return int
+     */
+    private function get_product_id_by_sku(string $articul): int
+    {
+        $product_skus = $this->get_all_product_skus();
+        if (empty($product_skus)) {
+            return 0;
+        }
+
+        if (empty($articul)) {
+            return 0;
+        }
+
+        if (in_array($articul, $product_skus)) {
+            return array_search($articul, $product_skus);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get all product from WooCommerce
+     *
+     * @return array
+     */
+    private function get_all_products(): array
+    {
+        if (empty($this->products)) {
+            $this->products = wc_get_products(array(
+                'status' => 'publish',
+                'limit' => -1,
+            ));
+        }
+
+        return $this->products;
+    }
+
+    /**
+     * Get all product SKUs from WooCommerce
+     *
+     * @return array
+     */
+    private function get_all_product_skus(): array
+    {
+        if (empty($this->product_skus)) {
+            $products = $this->get_all_products();
+            foreach ($products as $product) {
+                $this->product_skus[$product->get_id()] = $product->get_sku();
+            }
+        }
+
+        return $this->product_skus;
+    }
+
+    /**
+     * Add created product to all products array
+     *
+     * @param WC_Product $product
+     *
+     * @return void
+     */
+    private function add_product_to_all_products(WC_Product $product): void
+    {
+        $this->products[] = $product;
+    }
+
 
 }

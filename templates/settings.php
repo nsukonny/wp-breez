@@ -1,60 +1,72 @@
 <?php
-defined( 'ABSPATH' ) || exit;
 
-$is_settings = isset( $_REQUEST['page'] ) && 'wpbreez_settings' === $_REQUEST['page'];
-$settings    = $args['settings'];
+defined('ABSPATH') || exit;
+
+$is_settings = isset($_REQUEST['page']) && 'wpbreez_settings' === $_REQUEST['page'];
+$settings = $args['settings'];
+
+if ($is_settings && !empty($_SESSION['notice_success'])) {
+    echo '<div class="notice notice-success is-dismissible"><p>' . $_SESSION['notice_success'] . '</p></div>';
+    unset($_SESSION['notice_success']);
+}
+
+if ($is_settings && !empty($_SESSION['notice_error'])) {
+    echo '<div class="notice notice-error is-dismissible"><p>' . $_SESSION['notice_error'] . '</p></div>';
+    unset($_SESSION['notice_error']);
+}
 ?>
-    <div class="widget">
+<div class="wpbreez">
 
-        <div class="widget-panel">
+    <h3><?php _e('Импорт', 'wpbreez'); ?></h3>
 
-            <div id="widgetMainBody"
-                 class="widget-panel__content body-widget<?php if ( $is_settings ) { ?> widget_showed<?php } ?>">
+    <div class="wpbreez-actions">
+        <a href="<?php echo admin_url('options-general.php?page=wpbreez_settings&action=import_categories'); ?>"
+           class="wpbreez__settings-btn">
+            <i class="fa-solid fa-cog"></i>
+            <?php _e('1. Импортировать категории', 'wpbreez'); ?>
+        </a>
+        <a href="<?php echo admin_url('options-general.php?page=wpbreez_settings&action=import_brands'); ?>"
+           class="wpbreez__settings-btn">
+            <i class="fa-solid fa-cog"></i>
+            <?php _e('2. Импортировать бренды', 'wpbreez'); ?>
+        </a>
+        <a href="<?php echo admin_url('options-general.php?page=wpbreez_settings&action=import_products'); ?>"
+           class="wpbreez__settings-btn">
+            <i class="fa-solid fa-cog"></i>
+            <?php _e('3. Импортировать товары', 'wpbreez'); ?>
+        </a>
 
-				<?php load_template( WPBREEZ_PATH . 'templates/settings/tabs.php', true, $args ); ?>
+        <a href="<?php echo admin_url('options-general.php?page=wpbreez_settings&action=import_product_techs'); ?>"
+           class="wpbreez__settings-btn">
+            <i class="fa-solid fa-cog"></i>
+            <?php _e('4. Импортировать аттрибуты товаров', 'wpbreez'); ?>
+        </a>
 
-                <div class="body-widget__content content-widget">
-
-                    <form action="#" name="wpbreez_setting_form" method="post" novalidate >
-
-                        <input type="hidden" name="_ajax_nonce"
-                               value="<?php echo esc_attr( wp_create_nonce( '_wpbreez_nonce' ) ); ?>">
-
-						<?php
-						$setting_tabs = array(
-							'visibility',
-							'placement',
-							'buttons',
-							'widget_style',
-							'header',
-							'form',
-							'feedback',
-						);
-						foreach ( $setting_tabs as $setting_tab ) {
-							load_template( WPBREEZ_PATH . 'templates/settings/' . $setting_tab . '.php', true, $args );
-						}
-						?>
-
-                        <div class="field-widget__cls-line"></div>
-                        <div class="field-widget__save-btn-container">
-                            <button class="field-widget__save-options save-settings">
-                                <img src="<?php echo WPBREEZ_URL; ?>assets/img/preloader.svg"
-                                     class="widget-preloader hidden">
-                                <i class="fa-solid fa-check widget-preloader__complete hidden"></i><?php _e( 'Save options', 'wpbreez' ); ?>
-                            </button>
-                        </div>
-                    </form>
-
-                </div>
-
-            </div>
-
-            <?php
-			load_template( WPBREEZ_PATH . 'templates/settings/modals/add_url_modal.php', true, $args );
-			load_template( WPBREEZ_PATH . 'templates/settings/modals/add_form_field_modal.php', true, $args );
-			?>
-
-        </div>
+        <a href="<?php echo admin_url('options-general.php?page=wpbreez_settings&action=import_product_stocks'); ?>"
+           class="wpbreez__settings-btn">
+            <i class="fa-solid fa-cog"></i>
+            <?php _e('5. Обновить остатки (обновляются сами каждый несколько часов)', 'wpbreez'); ?>
+        </a>
     </div>
 
-<?php wp_enqueue_media(); ?>
+    <h3><?php _e('Настройки', 'wpbreez'); ?></h3>
+
+    <div class="wpbreez-settings">
+        <form action="<?php echo admin_url('options-general.php?page=wpbreez_settings'); ?>" method="post">
+            <?php wp_nonce_field('wpbreeze_save_settings'); ?>
+            <label for="api_key"> <?php _e('API Key', 'wpbreez'); ?>
+                <input type="text" name="api_key" id="api_key" value="<?php echo esc_attr($settings['api_key']); ?>">
+            </label>
+            <label for="username"> <?php _e('Логин от Breez', 'wpbreez'); ?>
+                <input type="text" id="username" name="username" value="<?php echo esc_attr($settings['username']); ?>">
+            </label>
+            <label for="passwd"> <?php _e('Пароль', 'wpbreez'); ?>
+                <input type="password" id="passwd" name="passwd" value="<?php echo esc_attr($settings['passwd']); ?>">
+            </label>
+            <p>
+                <input type="submit" name="screen-options-apply" id="screen-options-apply" class="button button-primary"
+                       value="<?php _e('Сохранить', 'wpbreez'); ?>">
+            </p>
+        </form>
+    </div>
+</div>

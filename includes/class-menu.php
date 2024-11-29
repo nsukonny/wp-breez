@@ -21,10 +21,9 @@ class Menu
      *
      * @since 1.0.0
      */
-    public function init()
+    public function init(): void
     {
         add_action('admin_menu', array($this, 'add_menu_page'));
-        add_action('admin_menu', array($this, 'remove_submenu_page'));
     }
 
     /**
@@ -32,28 +31,18 @@ class Menu
      *
      * @since 1.0.0
      */
-    public function add_menu_page()
+    public function add_menu_page(): void
     {
         add_submenu_page(
-            'edit.php?post_type=wpbreez',
-            __('Settings', 'wpbreez'),
-            __('Settings', 'wpbreez'),
+            'options-general.php',
+            __('WPBreez Settings', 'wpbreez'),
+            __('WPBreez Settings', 'wpbreez'),
             'manage_options',
             'wpbreez_settings',
             array(Settings::instance(), 'draw_settings')
         );
     }
 
-    /**
-     * Hide doubles from the menu
-     *
-     * @since 1.0.0
-     */
-    public function remove_submenu_page()
-    {
-        remove_submenu_page('wpbreez', 'wpbreez');
-    }
-
 }
 
-add_action('init_wpbreez', array(Menu::class, 'instance'));
+add_action('init_wpbreez_admin', array(Menu::class, 'instance'));

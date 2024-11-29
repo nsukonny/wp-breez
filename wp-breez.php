@@ -24,16 +24,16 @@ require_once plugin_dir_path(__FILE__) . 'includes/framework/trait-singleton.php
 require_once plugin_dir_path(__FILE__) . 'includes/framework/class-loader.php';
 
 Loader::init_autoload(__NAMESPACE__, __DIR__);
-register_activation_hook(__FILE__, array(Install::class, 'install'));
+register_activation_hook(__FILE__, array(Install::class, 'activation'));
+register_deactivation_hook(__FILE__, array(Install::class, 'deactivate'));
+register_uninstall_hook(__FILE__, array(Install::class, 'uninstall'));
 
-if (is_admin()) {
-    if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
-        add_action('init', array(WPBreez::class, 'instance'));
-    } else {
-        add_action('admin_notices', function () {
-            echo '<div class="notice notice-error is-dismissible">
+if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
+    add_action('init', array(WPBreez::class, 'instance'));
+} else {
+    add_action('admin_notices', function () {
+        echo '<div class="notice notice-error is-dismissible">
                 <p>' . __('WP Breez requires WooCommerce plugin to be active.', 'wpbreez') . '</p>
             </div>';
-        });
-    }
+    });
 }
