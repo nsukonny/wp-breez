@@ -147,6 +147,8 @@ class Import
      * @return array
      *
      * @throws WC_Data_Exception
+     *
+     * @since 1.0.1 - disable import if price is empty or zero
      */
     public function import_products(int $page_number = 1): array
     {
@@ -163,6 +165,10 @@ class Import
 
         $product_skus = $this->get_all_product_skus();
         foreach ($breez_products as $breez_product_id => $breez_product) {
+            if (empty($breez_product['price']['ric']) || 0 >= $breez_product['price']['ric']) {
+                continue;
+            }
+
             $product_id = $this->get_product_id_by_sku($breez_product['articul']);
             if (!empty($product_id)) {
                 continue;
@@ -209,6 +215,8 @@ class Import
      * Load stocks quantity for all products
      *
      * @return void
+     *
+     * @since 1.0.1 - disable price update if price is empty or zero
      */
     public function import_product_stocks(): void
     {
@@ -231,6 +239,10 @@ class Import
 
             $stock_quantity = 0;
             foreach ($breez_product_stocks as $breez_product_stock) {
+                if (empty($breez_product_stock['price']['base']) || 0 >= $breez_product_stock['price']['base']) {
+                    $product->set_status('draft');
+                }
+
                 if ($breez_product_stock['articul'] === $product_articul) {
                     $stock_quantity = $breez_product_stock['quantity'] ?? 0;
                     $product->set_price($breez_product_stock['price']['base']);

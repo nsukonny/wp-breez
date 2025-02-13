@@ -1,5 +1,9 @@
 Changelog
 
-November 17, 2024 <
+v1.0.1 - Feb 13, 2025
+--------------------------
+> ***[fixed]*** Disable import if price is zero
+
+v1.0.0 - November 17, 2024 <
 --------------------------
 > ***[added]*** version 1.0 release
